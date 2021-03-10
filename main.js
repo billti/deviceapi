@@ -185,24 +185,8 @@ function ConfigureVideoCapture() {
           stream => {
             video_stream = stream;
             picture_preview.srcObject = video_stream;
-            // picture_preview.onloadedmetadata = (ev) => {
-            //   picture_preview.play();
-            // };
             picture_button.textContent = "Take";
             picture_state = "preview";
-
-            picture_preview.addEventListener("canplay", ev => {
-              // Fired when the preview starts
-
-              // videoHeight and videoWidth are the actual stream height and width
-              // clientHeight and clientWidth are the CSS display size of the content
-
-              // Resize the canvas display size to the same as the video stream size
-              let stream_width = picture_preview.videoWidth;
-              let stream_height = picture_preview.videoHeight;
-              picture_capture.setAttribute("width", stream_width.toString());
-              picture_capture.setAttribute("height", stream_height.toString());
-            });
 
             // Add the ability to switch cameras
             let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
@@ -222,6 +206,15 @@ function ConfigureVideoCapture() {
         );
         break;
       case "preview":
+        // videoHeight and videoWidth are the actual stream height and width
+        // clientHeight and clientWidth are the CSS display size of the content
+
+        // Resize the canvas display size to the same as the video stream size
+        let stream_width = picture_preview.videoWidth;
+        let stream_height = picture_preview.videoHeight;
+        picture_capture.setAttribute("width", stream_width.toString());
+        picture_capture.setAttribute("height", stream_height.toString());
+
         let context2d = picture_capture.getContext("2d");
         context2d.drawImage(picture_preview, 0, 0);
         let image_data = picture_capture.toDataURL("image/png");
@@ -229,7 +222,7 @@ function ConfigureVideoCapture() {
         // Add an image of the capture
         let img = document.createElement("img");
         img.style.width = "320px";
-        img.style.height = "240px";
+        img.style.height = Math.ceil(320 * (stream_height / stream_width)) + "px";
         img.src = image_data;
         document.querySelector("#pictures").appendChild(img);
 
