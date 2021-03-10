@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <!-- Without the below *-scale settings, WebView layout is messed up on mobile device rotation -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0" />
+    <title>Device API demo</title>
+    <link rel="stylesheet" href="page.css" />
+    <link rel="icon"
+        href="data:image/gif;base64,R0lGODlhEAAQAPAAAP+AQECA/ywAAAAAEAAQAAACFPAxdbn9YZSTBXtx1pt3/8FQHLkCADs=">
+</head>
+
+<body>
+    <h1>Device API demo</h1>
+
+    <h2>GPS location</h2>
+    <button id="gps_button">Update</button>
+    <div id="gps_location"></div>
+    <hr>
+
+    <h2>Audio</h2>
+    <button id="audio_button">Record</button>
+    <p>
+      <canvas class="visualizer" height="60" width="180"></canvas>
+      <h3>Sounds clips</h3>
+      <section class="sound-clips"></section>
+    </p>
+    <hr>
+
+    <h2>Camera</h2>
+    <button id="picture_button">Preview</button>
+    <p>
+      <canvas id="picture_capture" style="display:none" width="1280" height="960"></canvas>
+      <br>
+      <video id="picture_preview" width="320" height="240">Video stream not available.</video>
+      <h3>Pictures</h3>
+      <div id="pictures"> </div>
+    </p>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
