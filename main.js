@@ -1,9 +1,11 @@
-// @ts-check
+// @ts-check : See https://www.typescriptlang.org/docs/handbook/type-checking-javascript-files.html
 
-document.addEventListener("DOMContentLoaded", evt => {
+/* Useful docs:
+ * - https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+ * - https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder
+ */
 
-  /********** GPS location handling code *********/
-
+function ConfigureLocationCapture() {
   /** @type HTMLButtonElement */
   let gps_button = document.querySelector("#gps_button");
 
@@ -22,9 +24,9 @@ document.addEventListener("DOMContentLoaded", evt => {
       });
     }
   };
+}
 
-  /********** Audio recording handling code *********/
-
+function ConfigureAudioCapture() {
   /** @type HTMLButtonElement */
   let audio_button = document.querySelector("#audio_button");
   let audio_constraints = { audio: true };
@@ -35,6 +37,9 @@ document.addEventListener("DOMContentLoaded", evt => {
   let audio_state = "stopped";
   let media_recorder = null;
   let media_chunks = [];
+
+  /** @type MediaStream */
+  let audio_stream = null;
 
   let on_media_recorder_error = (err) => {
     audio_state = "error";
@@ -56,6 +61,10 @@ document.addEventListener("DOMContentLoaded", evt => {
     document.querySelector(".sound-clips").appendChild(audio);
     // TODO: Add the clip "delete" and "post" buttons
 
+    // The below is required to free up the device capture in the browser
+    audio_stream.getTracks().forEach(track => track.stop());
+    //audio_stream.getAudioTracks().forEach(audio_track => audio_track.stop());
+    audio_stream = null;
     media_chunks = [];
     media_recorder = null;
   };
@@ -63,11 +72,10 @@ document.addEventListener("DOMContentLoaded", evt => {
   audio_button.onclick = ev => {
     switch (audio_state) {
       case "stopped":
-        // Docs: https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
-        // Docs: https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder
         navigator.mediaDevices.getUserMedia(audio_constraints).then(stream => {
+          audio_stream = stream;
           // @ts-ignore : MediaRecorder is not in the default TypeScript type library
-          media_recorder = new MediaRecorder(stream);
+          media_recorder = new MediaRecorder(audio_stream);
           media_recorder.onerror = on_media_recorder_error;
           media_recorder.ondataavailable = on_media_recorder_data;
           media_recorder.onstop = on_media_recorder_stop;
@@ -75,7 +83,7 @@ document.addEventListener("DOMContentLoaded", evt => {
           media_recorder.start();
           audio_state = "recording";
           audio_button.textContent = "Stop";
-          visualize_audio(stream);
+          visualize_audio(audio_stream);
         }, err => {
           on_media_recorder_error(err);
         });
@@ -151,11 +159,13 @@ document.addEventListener("DOMContentLoaded", evt => {
       canvasCtx.stroke();
     }
   }
+}
 
-  /********** Video and picture handling code *********/
-
+function ConfigureVideoCapture() {
   /** @type HTMLButtonElement */
   let picture_button = document.querySelector("#picture_button");
+  /** @type HTMLButtonElement */
+  let flip_button = document.querySelector("#camera_flip");
 
   /** @type HTMLVideoElement */
   let picture_preview = document.querySelector("#picture_preview");
@@ -163,7 +173,9 @@ document.addEventListener("DOMContentLoaded", evt => {
   /** @type HTMLCanvasElement */
   let picture_capture = document.querySelector("#picture_capture");
 
-  let picture_constraints = { video: {width: 1280, height: 960, facingMode: "environment"}, audio: false };
+  /** @type MediaStream */
+  let video_stream = null;
+  let picture_constraints = { video: {facingMode: "environment"}, audio: false };
   let picture_state = "stopped";
 
   picture_button.onclick = (ev) => {
@@ -171,8 +183,11 @@ document.addEventListener("DOMContentLoaded", evt => {
       case "stopped":
         navigator.mediaDevices.getUserMedia(picture_constraints).then(
           stream => {
-            picture_preview.srcObject = stream;
-            picture_preview.play();
+            video_stream = stream;
+            picture_preview.srcObject = video_stream;
+            // picture_preview.onloadedmetadata = (ev) => {
+            //   picture_preview.play();
+            // };
             picture_button.textContent = "Take";
             picture_state = "preview";
 
@@ -188,6 +203,18 @@ document.addEventListener("DOMContentLoaded", evt => {
               picture_capture.setAttribute("width", stream_width.toString());
               picture_capture.setAttribute("height", stream_height.toString());
             });
+
+            // Add the ability to switch cameras
+            let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
+            if (video_capabilities.facingMode.length) {
+              // There are only entries if there are multiple cameras
+              flip_button.disabled = false;
+              let back_camera = true;
+              flip_button.onclick = (ev) => {
+                back_camera = !back_camera;
+                video_stream.getVideoTracks()[0].applyConstraints({facingMode: back_camera ? "environment" : "user"});
+              };
+            }
           },
           err => {
             console.log("Failed to open camera with error: " + err);
@@ -207,8 +234,12 @@ document.addEventListener("DOMContentLoaded", evt => {
         document.querySelector("#pictures").appendChild(img);
 
         picture_preview.pause();
+        video_stream.getTracks().forEach(stream => stream.stop());
+        video_stream = null;
+
         picture_preview.srcObject = null;
         picture_button.textContent = "Preview";
+        flip_button.disabled = true;
         picture_state = "stopped";
         break;
       default:
@@ -218,4 +249,10 @@ document.addEventListener("DOMContentLoaded", evt => {
         break;
     }
   };
+}
+
+document.addEventListener("DOMContentLoaded", evt => {
+  ConfigureLocationCapture();
+  ConfigureAudioCapture();
+  ConfigureVideoCapture();
 });
