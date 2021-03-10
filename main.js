@@ -176,34 +176,56 @@ function ConfigureVideoCapture() {
   /** @type MediaStream */
   let video_stream = null;
   let picture_constraints = { video: {facingMode: "environment"}, audio: false };
+  let back_camera = true;
   let picture_state = "stopped";
+
+  let start_preview = () => {
+    navigator.mediaDevices.getUserMedia(picture_constraints).then(
+      stream => {
+        video_stream = stream;
+        picture_preview.srcObject = video_stream;
+        picture_button.textContent = "Take";
+        picture_state = "preview";
+
+        // Add the ability to switch cameras
+        let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
+        if (video_capabilities.facingMode.length) {
+          // There are only entries if there are multiple cameras
+          flip_button.disabled = false;
+          flip_button.onclick = (ev) => {
+            back_camera = !back_camera;
+            picture_constraints.video.facingMode = back_camera ? "environment" : "user";
+            // Android doesn't seem to like applying new constraints to a running camera
+            // So just stop and restart it with the new settings
+            stop_preview();
+            start_preview();
+          };
+        }
+      },
+      err => {
+        picture_button.textContent = "Error";
+        picture_button.disabled = true;
+        picture_state = "error";
+        console.log("Failed to open camera with error: " + err);
+      }
+    );
+  };
+
+  let stop_preview = () => {
+    picture_preview.pause();
+    video_stream.getTracks().forEach(stream => stream.stop());
+    video_stream = null;
+
+    picture_preview.srcObject = null;
+    picture_button.textContent = "Preview";
+    flip_button.disabled = true;
+    picture_state = "stopped";
+  };
 
   picture_button.onclick = (ev) => {
     switch (picture_state) {
       case "stopped":
-        navigator.mediaDevices.getUserMedia(picture_constraints).then(
-          stream => {
-            video_stream = stream;
-            picture_preview.srcObject = video_stream;
-            picture_button.textContent = "Take";
-            picture_state = "preview";
-
-            // Add the ability to switch cameras
-            let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
-            if (video_capabilities.facingMode.length) {
-              // There are only entries if there are multiple cameras
-              flip_button.disabled = false;
-              let back_camera = true;
-              flip_button.onclick = (ev) => {
-                back_camera = !back_camera;
-                video_stream.getVideoTracks()[0].applyConstraints({facingMode: back_camera ? "environment" : "user"});
-              };
-            }
-          },
-          err => {
-            console.log("Failed to open camera with error: " + err);
-          }
-        );
+        start_preview();
         break;
       case "preview":
         // videoHeight and videoWidth are the actual stream height and width
@@ -226,14 +248,7 @@ function ConfigureVideoCapture() {
         img.src = image_data;
         document.querySelector("#pictures").appendChild(img);
 
-        picture_preview.pause();
-        video_stream.getTracks().forEach(stream => stream.stop());
-        video_stream = null;
-
-        picture_preview.srcObject = null;
-        picture_button.textContent = "Preview";
-        flip_button.disabled = true;
-        picture_state = "stopped";
+        stop_preview();
         break;
       default:
         console.log("Invalid picture state: " + picture_state);
