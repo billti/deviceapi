@@ -5,6 +5,8 @@
  * - https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder
  */
 
+const DEBUG = true;
+
 function ConfigureLocationCapture() {
   /** @type HTMLButtonElement */
   let gps_button = document.querySelector("#gps_button");
@@ -46,14 +48,17 @@ function ConfigureAudioCapture() {
     audio_button.textContent = "Error";
     audio_button.disabled = true;
     console.log("Error recording audio: " + err);
+    if (DEBUG) alert("Error: " + err);
   }
 
   let on_media_recorder_data = (e) => media_chunks.push(e.data);
 
   let on_media_recorder_stop = () => {
     // Create the audio blob from the chunks captured
-    let blob = new Blob(media_chunks, { 'type': 'audio/ogg; codecs=opus' });
+    let blob = new Blob(media_chunks, { 'type': 'audio/mp3' });
     let audioUrl = window.URL.createObjectURL(blob);
+
+    // Note: To post as an audio file, see https://stackoverflow.com/a/60433611/1674945
 
     let audio = document.createElement('audio');
     audio.src = audioUrl;
@@ -63,7 +68,6 @@ function ConfigureAudioCapture() {
 
     // The below is required to free up the device capture in the browser
     audio_stream.getTracks().forEach(track => track.stop());
-    //audio_stream.getAudioTracks().forEach(audio_track => audio_track.stop());
     audio_stream = null;
     media_chunks = [];
     media_recorder = null;
@@ -86,6 +90,7 @@ function ConfigureAudioCapture() {
           visualize_audio(audio_stream);
         }, err => {
           on_media_recorder_error(err);
+          if (DEBUG) alert("Error: " + err);
         });
         break;
       case "recording":
@@ -108,6 +113,9 @@ function ConfigureAudioCapture() {
     let visualizer_canvas = document.querySelector('.visualizer');
     let canvasCtx = visualizer_canvas.getContext("2d");
 
+    // Safari still uses a prefix for AudioContext
+    // @ts-ignore
+    let AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx = new AudioContext();
     let source = audioCtx.createMediaStreamSource(stream);
     let analyser = audioCtx.createAnalyser();
@@ -189,7 +197,7 @@ function ConfigureVideoCapture() {
 
         // Add the ability to switch cameras
         let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
-        if (video_capabilities.facingMode.length) {
+        if (video_capabilities.facingMode && video_capabilities.facingMode.length) {
           // There are only entries if there are multiple cameras
           flip_button.disabled = false;
           flip_button.onclick = (ev) => {
@@ -207,6 +215,7 @@ function ConfigureVideoCapture() {
         picture_button.disabled = true;
         picture_state = "error";
         console.log("Failed to open camera with error: " + err);
+        if (DEBUG) alert("Error: " + err);
       }
     );
   };
