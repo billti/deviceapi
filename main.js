@@ -7,6 +7,12 @@
 
 const DEBUG = true;
 
+// Sadly, Chrome and Safari don't overlap in what audio/video formats the can record to.
+const chrome_audio_mimeType = "audio/webm;codecs=opus";
+const safari_audio_mimeType = "audio/mp4;codecs=mp4a.40.2";
+const chrome_video_mimeType = "video/webm;codecs=vp8,opus";
+const safari_video_mimeType = "video/mp4;codecs=avc1.424028,mp4a.40.2";
+
 function ConfigureLocationCapture() {
   /** @type HTMLButtonElement */
   let gps_button = document.querySelector("#gps_button");
@@ -29,6 +35,7 @@ function ConfigureLocationCapture() {
 }
 
 function ConfigureAudioCapture() {
+
   /** @type HTMLButtonElement */
   let audio_button = document.querySelector("#audio_button");
   let audio_constraints = { audio: true };
@@ -55,7 +62,7 @@ function ConfigureAudioCapture() {
 
   let on_media_recorder_stop = () => {
     // Create the audio blob from the chunks captured
-    let blob = new Blob(media_chunks, { 'type': 'audio/mp3' });
+    let blob = new Blob(media_chunks, { 'type': media_recorder.mimeType });
     let audioUrl = window.URL.createObjectURL(blob);
 
     // Note: To post as an audio file, see https://stackoverflow.com/a/60433611/1674945
@@ -78,8 +85,15 @@ function ConfigureAudioCapture() {
       case "stopped":
         navigator.mediaDevices.getUserMedia(audio_constraints).then(stream => {
           audio_stream = stream;
-          // @ts-ignore : MediaRecorder is not in the default TypeScript type library
-          media_recorder = new MediaRecorder(audio_stream);
+
+          // MediaRecorder isn't in the TypeScript type lib yet. This avoids errors.
+          const MediaRecorder = window["MediaRecorder"];
+
+          // Add a fallback for Safari, just for testing.
+          // Hopefully Safari will add support for WebM and Opus soon.
+          const audio_codec = MediaRecorder.isTypeSupported(chrome_audio_mimeType) ?
+                  chrome_audio_mimeType : safari_audio_mimeType;
+          media_recorder = new MediaRecorder(audio_stream, {mimeType: audio_codec});
           media_recorder.onerror = on_media_recorder_error;
           media_recorder.ondataavailable = on_media_recorder_data;
           media_recorder.onstop = on_media_recorder_stop;
@@ -114,8 +128,8 @@ function ConfigureAudioCapture() {
     let canvasCtx = visualizer_canvas.getContext("2d");
 
     // Safari still uses a prefix for AudioContext
-    // @ts-ignore
-    let AudioContext = window.AudioContext || window.webkitAudioContext;
+    const AudioContext = window.AudioContext || window["webkitAudioContext"];
+
     let audioCtx = new AudioContext();
     let source = audioCtx.createMediaStreamSource(stream);
     let analyser = audioCtx.createAnalyser();
