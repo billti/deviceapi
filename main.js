@@ -255,7 +255,6 @@ function ConfigureVideoCapture() {
       stream => {
         video_stream = stream;
         picture_preview.srcObject = video_stream;
-        picture_preview.volume = 0; // Avoid the preview causing feedback
         video_state = "previewing";
 
         // Add the ability to switch cameras
