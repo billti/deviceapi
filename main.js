@@ -54,7 +54,6 @@ function ConfigureAudioCapture() {
     audio_state = "error";
     audio_button.textContent = "Error";
     audio_button.disabled = true;
-    console.log("Error recording audio: " + err);
     if (DEBUG) alert("Error: " + err);
   }
 
@@ -65,13 +64,13 @@ function ConfigureAudioCapture() {
     let blob = new Blob(media_chunks, { 'type': media_recorder.mimeType });
     let audioUrl = window.URL.createObjectURL(blob);
 
-    // Note: To post as an audio file, see https://stackoverflow.com/a/60433611/1674945
+    // Note: To post a media file, see https://stackoverflow.com/a/60433611/1674945
 
     let audio = document.createElement('audio');
     audio.src = audioUrl;
     audio.controls = true;
     document.querySelector(".sound-clips").appendChild(audio);
-    // TODO: Add the clip "delete" and "post" buttons
+    document.querySelector(".sound-clips").appendChild(document.createElement("br"));
 
     // The below is required to free up the device capture in the browser
     audio_stream.getTracks().forEach(track => track.stop());
@@ -92,7 +91,7 @@ function ConfigureAudioCapture() {
           // Add a fallback for Safari, just for testing.
           // Hopefully Safari will add support for WebM and Opus soon.
           const audio_codec = MediaRecorder.isTypeSupported(chrome_audio_mimeType) ?
-                  chrome_audio_mimeType : safari_audio_mimeType;
+            chrome_audio_mimeType : safari_audio_mimeType;
           media_recorder = new MediaRecorder(audio_stream, {mimeType: audio_codec});
           media_recorder.onerror = on_media_recorder_error;
           media_recorder.ondataavailable = on_media_recorder_data;
@@ -108,7 +107,7 @@ function ConfigureAudioCapture() {
         });
         break;
       case "recording":
-        media_recorder.stop();
+        media_recorder.stop();  // This will fire the onstop event handler
         audio_state = "stopped";
         audio_button.textContent = "Record";
         break;
@@ -185,9 +184,13 @@ function ConfigureAudioCapture() {
 
 function ConfigureVideoCapture() {
   /** @type HTMLButtonElement */
-  let picture_button = document.querySelector("#picture_button");
+  let preview_button = document.querySelector("#preview_button");
   /** @type HTMLButtonElement */
-  let flip_button = document.querySelector("#camera_flip");
+  let flip_button = document.querySelector("#flip_button");
+  /** @type HTMLButtonElement */
+  let photo_button = document.querySelector("#photo_button");
+  /** @type HTMLButtonElement */
+  let video_button = document.querySelector("#video_button");
 
   /** @type HTMLVideoElement */
   let picture_preview = document.querySelector("#picture_preview");
@@ -197,89 +200,186 @@ function ConfigureVideoCapture() {
 
   /** @type MediaStream */
   let video_stream = null;
-  let picture_constraints = { video: {facingMode: "environment"}, audio: false };
+  let picture_constraints = { video: { facingMode: "environment" }, audio: true };
   let back_camera = true;
-  let picture_state = "stopped";
+
+  let media_recorder = null;
+  let media_chunks = [];
+
+  /** @type {"stopped" | "previewing" | "recording" | "error"} */
+  let video_state = "stopped";
+  let can_flip = false;
+
+  let update_ui = () => {
+    switch (video_state) {
+      case "stopped":
+        preview_button.textContent = "Preview";
+        flip_button.disabled = true;
+        photo_button.disabled = true;
+        video_button.disabled = true;
+        break;
+      case "previewing":
+        preview_button.textContent = "Close";
+        flip_button.disabled = !can_flip;
+        photo_button.disabled = false;
+        video_button.disabled = false;
+        break;
+      case "recording":
+        preview_button.textContent = "Stop";
+        flip_button.disabled = true;
+        photo_button.disabled = true;
+        video_button.disabled = true;
+        break;
+      default:
+        // Error condition
+        preview_button.textContent = "Error";
+        preview_button.disabled = true;
+        flip_button.disabled = true;
+        photo_button.disabled = true;
+        video_button.disabled = true;
+        break;
+    }
+  };
+
+  let flip_camera = () => {
+    if (video_state !== "previewing") throw "Invalid state";
+    back_camera = !back_camera;
+    picture_constraints.video.facingMode = back_camera ? "environment" : "user";
+    stop_preview();
+    start_preview();
+  }
 
   let start_preview = () => {
+    if (video_state !== "stopped") throw "Invalid state";
     navigator.mediaDevices.getUserMedia(picture_constraints).then(
       stream => {
         video_stream = stream;
         picture_preview.srcObject = video_stream;
-        picture_button.textContent = "Take";
-        picture_state = "preview";
+        picture_preview.volume = 0; // Avoid the preview causing feedback
+        video_state = "previewing";
 
         // Add the ability to switch cameras
         let video_capabilities = video_stream.getVideoTracks()[0].getCapabilities();
-        if (video_capabilities.facingMode && video_capabilities.facingMode.length) {
-          // There are only entries if there are multiple cameras
-          flip_button.disabled = false;
-          flip_button.onclick = (ev) => {
-            back_camera = !back_camera;
-            picture_constraints.video.facingMode = back_camera ? "environment" : "user";
-            // Android doesn't seem to like applying new constraints to a running camera
-            // So just stop and restart it with the new settings
-            stop_preview();
-            start_preview();
-          };
-        }
+        can_flip = video_capabilities.facingMode && video_capabilities.facingMode.length > 0;
+        update_ui();
       },
       err => {
-        picture_button.textContent = "Error";
-        picture_button.disabled = true;
-        picture_state = "error";
-        console.log("Failed to open camera with error: " + err);
+        video_state = "error";
+        update_ui();
         if (DEBUG) alert("Error: " + err);
       }
     );
   };
 
   let stop_preview = () => {
+    if (video_state !== "previewing") throw "Invalid state";
     picture_preview.pause();
     video_stream.getTracks().forEach(stream => stream.stop());
     video_stream = null;
 
     picture_preview.srcObject = null;
-    picture_button.textContent = "Preview";
-    flip_button.disabled = true;
-    picture_state = "stopped";
+    video_state = "stopped";
+    update_ui();
   };
 
-  picture_button.onclick = (ev) => {
-    switch (picture_state) {
+  let take_picture = () => {
+    if (video_state !== "previewing") throw "Invalid state";
+    // videoHeight and videoWidth are the actual stream height and width
+    // clientHeight and clientWidth are the CSS display size of the content
+
+    // Resize the canvas display size to the same as the video stream size
+    let stream_width = picture_preview.videoWidth;
+    let stream_height = picture_preview.videoHeight;
+    picture_capture.setAttribute("width", stream_width.toString());
+    picture_capture.setAttribute("height", stream_height.toString());
+
+    let context2d = picture_capture.getContext("2d");
+    context2d.drawImage(picture_preview, 0, 0);
+    let image_data = picture_capture.toDataURL("image/png");
+
+    // Add an image of the capture
+    let img = document.createElement("img");
+    img.style.width = "320px";
+    img.style.height = Math.ceil(320 * (stream_height / stream_width)) + "px";
+    img.src = image_data;
+    document.querySelector("#pictures").appendChild(img);
+  };
+
+  let start_video = () => {
+    if (video_state !== "previewing") throw "Invalid state";
+
+    // MediaRecorder isn't in the TypeScript type lib yet. This avoids errors.
+    const MediaRecorder = window["MediaRecorder"];
+
+    // Add a fallback for Safari, just for testing.
+    // Hopefully Safari will add support for WebM and Opus soon.
+    const video_codec = MediaRecorder.isTypeSupported(chrome_video_mimeType) ?
+      chrome_video_mimeType : safari_video_mimeType;
+    media_recorder = new MediaRecorder(video_stream, { mimeType: video_codec });
+
+    media_recorder.ondataavailable = (event) => {
+      if (event.data) media_chunks.push(event.data);
+    };
+
+    media_recorder.onstop = save_video;
+    media_recorder.onerror = (err) => {
+      video_state = "error";
+      update_ui();
+      if (DEBUG) alert("Error: " + err);
+    };
+
+    media_recorder.start(1000); // Get in 1 second chunks
+
+    video_state = "recording";
+    update_ui();
+  };
+
+  let save_video = () => {
+    if (video_state !== "recording") throw "Invalid state";
+
+    let blob = new Blob(media_chunks, { 'type': media_recorder.mimeType });
+    let videoUrl = window.URL.createObjectURL(blob);
+
+    let video = document.createElement("video");
+    video.src = videoUrl;
+    video.controls = true;
+
+    let stream_width = picture_preview.videoWidth;
+    let stream_height = picture_preview.videoHeight;
+
+    video.style.width = "320px";
+    video.style.height = Math.ceil(320 * (stream_height / stream_width)) + "px";
+
+    document.querySelector("#pictures").appendChild(video);
+
+    media_chunks = [];
+    media_recorder = null;
+    video_state = "previewing";
+    update_ui();
+  };
+
+
+  preview_button.onclick = (ev) => {
+    switch (video_state) {
       case "stopped":
         start_preview();
         break;
-      case "preview":
-        // videoHeight and videoWidth are the actual stream height and width
-        // clientHeight and clientWidth are the CSS display size of the content
-
-        // Resize the canvas display size to the same as the video stream size
-        let stream_width = picture_preview.videoWidth;
-        let stream_height = picture_preview.videoHeight;
-        picture_capture.setAttribute("width", stream_width.toString());
-        picture_capture.setAttribute("height", stream_height.toString());
-
-        let context2d = picture_capture.getContext("2d");
-        context2d.drawImage(picture_preview, 0, 0);
-        let image_data = picture_capture.toDataURL("image/png");
-
-        // Add an image of the capture
-        let img = document.createElement("img");
-        img.style.width = "320px";
-        img.style.height = Math.ceil(320 * (stream_height / stream_width)) + "px";
-        img.src = image_data;
-        document.querySelector("#pictures").appendChild(img);
-
+      case "previewing":
         stop_preview();
         break;
+      case "recording":
+        media_recorder.stop(); // This will result in the save_video event handler
+        break;
       default:
-        console.log("Invalid picture state: " + picture_state);
-        picture_button.textContent = "Error";
-        picture_button.disabled = true;
+        if (DEBUG) alert("Invalid picture state: " + video_state);
+        video_state = "error";
+        update_ui();
         break;
     }
   };
+  flip_button.onclick = flip_camera;
+  photo_button.onclick = take_picture;
+  video_button.onclick = start_video;
 }
 
 document.addEventListener("DOMContentLoaded", evt => {
